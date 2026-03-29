@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TV番組ウォッチャー</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2B4B6F">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <h1 class="header-title">
+      <span class="header-icon">📺</span>
+      TV番組ウォッチャー
+    </h1>
+  </header>
+
+  <!-- Tab Navigation -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="dashboard">
+      <span class="tab-icon">🏠</span>
+      <span class="tab-label">ダッシュボード</span>
+    </button>
+    <button class="tab-btn" data-tab="calendar">
+      <span class="tab-icon">📅</span>
+      <span class="tab-label">カレンダー</span>
+    </button>
+    <button class="tab-btn" data-tab="watchlist">
+      <span class="tab-icon">📋</span>
+      <span class="tab-label">ウォッチリスト</span>
+    </button>
+    <button class="tab-btn" data-tab="search">
+      <span class="tab-icon">🔍</span>
+      <span class="tab-label">検索</span>
+    </button>
+  </nav>
+
+  <!-- Dashboard -->
+  <main>
+    <section id="dashboard" class="tab-content active">
+      <div class="section-header">
+        <h2>ジャンル別番組</h2>
+        <button class="btn btn-primary" id="btn-add-show">＋ 番組を追加</button>
+      </div>
+      <div class="genre-filter">
+        <button class="filter-chip active" data-genre="all">すべて</button>
+      </div>
+      <div id="dashboard-cards" class="card-grid"></div>
+    </section>
+
+    <!-- Calendar -->
+    <section id="calendar" class="tab-content">
+      <div class="section-header">
+        <h2 id="calendar-title"></h2>
+        <div class="calendar-nav">
+          <button class="btn btn-icon" id="cal-prev">◀</button>
+          <button class="btn btn-icon" id="cal-today">今日</button>
+          <button class="btn btn-icon" id="cal-next">▶</button>
+        </div>
+      </div>
+      <div class="calendar-grid">
+        <div class="cal-header">日</div>
+        <div class="cal-header">月</div>
+        <div class="cal-header">火</div>
+        <div class="cal-header">水</div>
+        <div class="cal-header">木</div>
+        <div class="cal-header">金</div>
+        <div class="cal-header">土</div>
+      </div>
+      <div id="calendar-days" class="calendar-days"></div>
+    </section>
+
+    <!-- Watchlist -->
+    <section id="watchlist" class="tab-content">
+      <div class="section-header">
+        <h2>視聴管理</h2>
+        <div class="watchlist-filters">
+          <button class="filter-chip active" data-watch="all">すべて</button>
+          <button class="filter-chip" data-watch="unwatched">未視聴</button>
+          <button class="filter-chip" data-watch="watched">視聴済み</button>
+        </div>
+      </div>
+      <div id="watchlist-items" class="watchlist-list"></div>
+    </section>
+
+    <!-- Search -->
+    <section id="search" class="tab-content">
+      <div class="section-header">
+        <h2>番組を調査</h2>
+      </div>
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="番組名を入力..." class="input-field">
+        <button class="btn btn-primary" id="btn-search">検索</button>
+      </div>
+      <div class="search-links" id="search-links"></div>
+      <div class="search-presets">
+        <h3>ジャンル別クイック検索</h3>
+        <div id="search-presets-list" class="preset-grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Add/Edit Modal -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">番組を追加</h3>
+        <button class="btn-close" id="modal-close">✕</button>
+      </div>
+      <form id="show-form">
+        <input type="hidden" id="form-id">
+        <div class="form-group">
+          <label>番組名 <span class="required">*</span></label>
+          <input type="text" id="form-name" class="input-field" required>
+        </div>
+        <div class="form-group">
+          <label>チャンネル</label>
+          <input type="text" id="form-channel" class="input-field" placeholder="例: NHK総合, テレビ東京">
+        </div>
+        <div class="form-group">
+          <label>ジャンル</label>
+          <select id="form-genre" class="input-field"></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>放送曜日</label>
+            <select id="form-day" class="input-field">
+              <option value="">未定</option>
+              <option value="0">日曜</option>
+              <option value="1">月曜</option>
+              <option value="2">火曜</option>
+              <option value="3">水曜</option>
+              <option value="4">木曜</option>
+              <option value="5">金曜</option>
+              <option value="6">土曜</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>放送時間</label>
+            <input type="time" id="form-time" class="input-field">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>メモ</label>
+          <textarea id="form-memo" class="input-field" rows="3" placeholder="番組の詳細やメモ..."></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="btn-cancel">キャンセル</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Episode Log Modal -->
+  <div class="modal-overlay" id="episode-modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="episode-modal-title">視聴記録</h3>
+        <button class="btn-close" id="episode-modal-close">✕</button>
+      </div>
+      <form id="episode-form">
+        <input type="hidden" id="ep-show-id">
+        <input type="hidden" id="ep-id">
+        <div class="form-group">
+          <label>放送日</label>
+          <input type="date" id="ep-date" class="input-field">
+        </div>
+        <div class="form-group">
+          <label>エピソードタイトル</label>
+          <input type="text" id="ep-title" class="input-field" placeholder="例: 第3回 東京下町編">
+        </div>
+        <div class="form-group">
+          <label>評価</label>
+          <div class="star-rating" id="ep-rating">
+            <span class="star" data-val="1">★</span>
+            <span class="star" data-val="2">★</span>
+            <span class="star" data-val="3">★</span>
+            <span class="star" data-val="4">★</span>
+            <span class="star" data-val="5">★</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>感想</label>
+          <textarea id="ep-comment" class="input-field" rows="3" placeholder="感想やメモ..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="ep-watched"> 視聴済み
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="ep-cancel">キャンセル</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Data Management (bottom of page) -->
+  <footer class="footer">
+    <button class="btn btn-secondary btn-sm" id="btn-export">エクスポート</button>
+    <button class="btn btn-secondary btn-sm" id="btn-import">インポート</button>
+    <input type="file" id="import-file" accept=".json" hidden>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
