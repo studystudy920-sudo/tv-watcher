@@ -300,7 +300,6 @@ main { padding: 16px; max-width: 900px; margin: 0 auto; }
   align-items: center;
 }
 .watch-item-title { font-weight: 700; font-size: 0.95rem; }
-.watch-item-genre { font-size: 0.7rem; }
 .watch-episodes { display: flex; flex-direction: column; gap: 6px; }
 
 .episode-row {

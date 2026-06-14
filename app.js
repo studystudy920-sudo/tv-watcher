@@ -67,7 +67,6 @@ function initPresets() {
   state.shows = PRESET_SHOWS.map((s, i) => ({
     id: 'preset-' + i,
     ...s,
-    favorite: false,
     createdAt: Date.now(),
   }));
   saveState();
@@ -81,6 +80,16 @@ function allGenres() {
 
 function getGenre(id) {
   return allGenres().find(g => g.id === id) || { id, icon: '📌', color: '#2B4B6F' };
+}
+
+// Build an id -> genre Map once per render to avoid rebuilding allGenres() per item.
+function genreLookup() {
+  const map = new Map();
+  for (const g of allGenres()) map.set(g.id, g);
+  return map;
+}
+function lookupGenre(map, id) {
+  return map.get(id) || { id, icon: '📌', color: '#2B4B6F' };
 }
 
 /* ===== Tab Navigation ===== */
@@ -131,22 +140,23 @@ function renderCards(genre) {
     return;
   }
 
+  const genreMap = genreLookup();
   container.innerHTML = shows.map(s => {
-    const g = getGenre(s.genre);
+    const g = lookupGenre(genreMap, s.genre);
     const genreClass = GENRES.find(x => x.id === s.genre) ? `genre-${s.genre}` : 'genre-custom';
     const dayStr = s.day !== '' ? DAY_NAMES[parseInt(s.day)] + '曜' : '';
     const timeStr = s.time || '';
     const schedule = [dayStr, timeStr].filter(Boolean).join(' ');
     return `
-      <div class="show-card" data-genre="${s.genre}">
-        <span class="card-genre ${genreClass}">${g.icon} ${s.genre}</span>
+      <div class="show-card" data-genre="${esc(s.genre)}">
+        <span class="card-genre ${genreClass}">${g.icon} ${esc(s.genre)}</span>
         <div class="card-title">${esc(s.name)}</div>
-        <div class="card-info">${esc(s.channel || '')}${schedule ? ' ・ ' + schedule : ''}</div>
+        <div class="card-info">${esc(s.channel || '')}${schedule ? ' ・ ' + esc(schedule) : ''}</div>
         ${s.memo ? `<div class="card-memo">${esc(s.memo)}</div>` : ''}
         <div class="card-actions">
-          <button class="btn btn-secondary btn-sm" onclick="searchShow('${esc(s.name)}')">🔍 調査</button>
-          <button class="btn btn-secondary btn-sm" onclick="editShow('${s.id}')">✏️ 編集</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteShow('${s.id}')">🗑</button>
+          <button class="btn btn-secondary btn-sm" data-action="search" data-id="${esc(s.id)}">🔍 調査</button>
+          <button class="btn btn-secondary btn-sm" data-action="edit" data-id="${esc(s.id)}">✏️ 編集</button>
+          <button class="btn btn-danger btn-sm" data-action="delete" data-id="${esc(s.id)}">🗑</button>
         </div>
       </div>`;
   }).join('');
@@ -162,6 +172,15 @@ function renderCalendar() {
   const prevDays = new Date(year, month, 0).getDate();
   const today = new Date();
 
+  // Pre-bucket shows by weekday (0-6) once, instead of scanning all shows per day.
+  const genreMap = genreLookup();
+  const byDay = Array.from({ length: 7 }, () => []);
+  for (const s of state.shows) {
+    if (s.day === '' || s.day == null) continue;
+    const d = parseInt(s.day);
+    if (d >= 0 && d <= 6) byDay[d].push(s);
+  }
+
   let html = '';
 
   // Previous month padding
@@ -174,13 +193,12 @@ function renderCalendar() {
     const date = new Date(year, month, d);
     const dayOfWeek = date.getDay();
     const isToday = date.toDateString() === today.toDateString();
-    const showsOnDay = state.shows.filter(s => s.day !== '' && parseInt(s.day) === dayOfWeek);
 
     html += `<div class="cal-day${isToday ? ' today' : ''}">
       <div class="cal-day-num">${d}</div>
-      ${showsOnDay.map(s => {
-        const g = getGenre(s.genre);
-        return `<div class="cal-show" style="background:${g.color}22;color:${g.color}" title="${esc(s.name)} ${s.time || ''}">${esc(s.name)}</div>`;
+      ${byDay[dayOfWeek].map(s => {
+        const g = lookupGenre(genreMap, s.genre);
+        return `<div class="cal-show" style="background:${g.color}22;color:${g.color}" title="${esc(s.name)} ${esc(s.time || '')}">${esc(s.name)}</div>`;
       }).join('')}
     </div>`;
   }
@@ -222,8 +240,9 @@ function renderWatchlist() {
     return;
   }
 
+  const genreMap = genreLookup();
   container.innerHTML = state.shows.map(s => {
-    const g = getGenre(s.genre);
+    const g = lookupGenre(genreMap, s.genre);
     const genreClass = GENRES.find(x => x.id === s.genre) ? `genre-${s.genre}` : 'genre-custom';
     const eps = state.episodes.filter(e => e.showId === s.id).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
@@ -235,29 +254,31 @@ function renderWatchlist() {
       <div class="watch-item">
         <div class="watch-item-header">
           <div>
-            <span class="card-genre ${genreClass}">${g.icon} ${s.genre}</span>
+            <span class="card-genre ${genreClass}">${g.icon} ${esc(s.genre)}</span>
             <div class="watch-item-title">${esc(s.name)}</div>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="searchShow('${esc(s.name)}')">🔍</button>
+          <button class="btn btn-secondary btn-sm" data-action="search" data-id="${esc(s.id)}">🔍</button>
         </div>
         <div class="watch-episodes">
-          ${eps.map(ep => `
-            <div class="episode-row${ep.watched ? ' watched' : ''}">
+          ${eps.map(ep => {
+            const rating = Math.max(0, Math.min(5, parseInt(ep.rating) || 0));
+            return `
+            <div class="episode-row${ep.watched ? ' watched' : ''}" data-ep-row="${esc(ep.id)}">
               <input type="checkbox" class="episode-checkbox" ${ep.watched ? 'checked' : ''}
-                onchange="toggleEpisode('${ep.id}', this.checked)">
+                data-action="toggle" data-ep-id="${esc(ep.id)}">
               <div class="episode-info">
                 <div class="episode-title">${esc(ep.title || '(タイトル未設定)')}</div>
-                <div class="episode-date">${ep.date || ''}</div>
-                ${ep.rating ? `<div class="episode-stars">${'★'.repeat(ep.rating)}${'☆'.repeat(5 - ep.rating)}</div>` : ''}
+                <div class="episode-date">${esc(ep.date || '')}</div>
+                ${rating ? `<div class="episode-stars">${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}</div>` : ''}
                 ${ep.comment ? `<div class="episode-comment">${esc(ep.comment)}</div>` : ''}
               </div>
               <div class="episode-actions">
-                <button class="btn btn-secondary btn-sm" onclick="editEpisode('${s.id}','${ep.id}')">✏️</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteEpisode('${ep.id}')">🗑</button>
+                <button class="btn btn-secondary btn-sm" data-action="edit-ep" data-id="${esc(s.id)}" data-ep-id="${esc(ep.id)}">✏️</button>
+                <button class="btn btn-danger btn-sm" data-action="delete-ep" data-ep-id="${esc(ep.id)}">🗑</button>
               </div>
-            </div>
-          `).join('')}
-          <button class="btn-add-episode" onclick="addEpisode('${s.id}')">＋ 視聴記録を追加</button>
+            </div>`;
+          }).join('')}
+          <button class="btn-add-episode" data-action="add-ep" data-id="${esc(s.id)}">＋ 視聴記録を追加</button>
         </div>
       </div>`;
   }).filter(Boolean).join('');
@@ -312,7 +333,16 @@ function deleteEpisode(epId) {
 
 function toggleEpisode(epId, watched) {
   const ep = state.episodes.find(e => e.id === epId);
-  if (ep) { ep.watched = watched; saveState(); renderWatchlist(); }
+  if (!ep) return;
+  ep.watched = watched;
+  saveState();
+  // Under a watched/unwatched filter the row's membership can change, so re-render.
+  const filter = document.querySelector('.watchlist-filters .filter-chip.active')?.dataset.watch || 'all';
+  if (filter !== 'all') { renderWatchlist(); return; }
+  // Otherwise just toggle the affected row instead of rebuilding the whole list.
+  const sel = (window.CSS && CSS.escape) ? CSS.escape(epId) : epId;
+  const row = document.querySelector(`.episode-row[data-ep-row="${sel}"]`);
+  if (row) row.classList.toggle('watched', watched);
 }
 
 let currentRating = 0;
@@ -359,10 +389,11 @@ document.getElementById('ep-cancel').addEventListener('click', () => {
 /* ===== Search ===== */
 function renderSearchPresets() {
   const container = document.getElementById('search-presets-list');
+  const genreMap = genreLookup();
   container.innerHTML = GENRE_SEARCHES.map(gs => {
-    const g = getGenre(gs.genre);
-    return `<div class="preset-card" style="border-left-color:${g.color}" onclick="performSearch('${esc(gs.keywords)}')">
-      <div class="preset-card-title">${g.icon} ${gs.genre}</div>
+    const g = lookupGenre(genreMap, gs.genre);
+    return `<div class="preset-card" style="border-left-color:${g.color}" data-action="preset" data-keywords="${esc(gs.keywords)}">
+      <div class="preset-card-title">${g.icon} ${esc(gs.genre)}</div>
       <div class="preset-card-desc">${esc(gs.desc)}</div>
     </div>`;
   }).join('');
@@ -443,7 +474,7 @@ function deleteShow(id) {
 function populateGenreSelect(selected) {
   const sel = document.getElementById('form-genre');
   sel.innerHTML = allGenres().map(g =>
-    `<option value="${g.id}" ${g.id === selected ? 'selected' : ''}>${g.icon} ${g.id}</option>`
+    `<option value="${esc(g.id)}" ${g.id === selected ? 'selected' : ''}>${esc(g.icon)} ${esc(g.id)}</option>`
   ).join('') + '<option value="__new__">＋ 新しいジャンルを追加</option>';
 }
 
@@ -478,7 +509,7 @@ document.getElementById('show-form').addEventListener('submit', e => {
     const idx = state.shows.findIndex(s => s.id === id);
     if (idx >= 0) state.shows[idx] = { ...state.shows[idx], ...data };
   } else {
-    state.shows.push({ id: genId(), ...data, favorite: false, createdAt: Date.now() });
+    state.shows.push({ id: genId(), ...data, createdAt: Date.now() });
   }
   saveState();
   document.getElementById('modal-overlay').classList.remove('open');
@@ -520,9 +551,9 @@ document.getElementById('import-file').addEventListener('change', e => {
   reader.onload = ev => {
     try {
       const data = JSON.parse(ev.target.result);
-      if (data.shows) state.shows = data.shows;
-      if (data.episodes) state.episodes = data.episodes;
-      if (data.customGenres) state.customGenres = data.customGenres;
+      if (data.shows) state.shows = sanitizeShows(data.shows);
+      if (data.episodes) state.episodes = sanitizeEpisodes(data.episodes);
+      if (data.customGenres) state.customGenres = sanitizeGenres(data.customGenres);
       saveState();
       renderDashboard();
       alert('インポートが完了しました！');
@@ -535,10 +566,93 @@ document.getElementById('import-file').addEventListener('change', e => {
 });
 
 /* ===== Utils ===== */
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 function esc(str) {
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
+  return String(str ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
+}
+
+// Defense-in-depth: coerce imported data to known shapes/types before use.
+function sanitizeShows(arr) {
+  if (!Array.isArray(arr)) return [];
+  const validDays = ['0', '1', '2', '3', '4', '5', '6'];
+  return arr.map(s => ({
+    id: String(s?.id || genId()),
+    name: String(s?.name ?? ''),
+    channel: String(s?.channel ?? ''),
+    genre: String(s?.genre ?? ''),
+    day: validDays.includes(String(s?.day)) ? String(s.day) : '',
+    time: String(s?.time ?? ''),
+    memo: String(s?.memo ?? ''),
+    createdAt: Number(s?.createdAt) || Date.now(),
+  }));
+}
+function sanitizeEpisodes(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(e => ({
+    id: String(e?.id || genId()),
+    showId: String(e?.showId ?? ''),
+    date: String(e?.date ?? ''),
+    title: String(e?.title ?? ''),
+    rating: Math.max(0, Math.min(5, parseInt(e?.rating) || 0)),
+    comment: String(e?.comment ?? ''),
+    watched: Boolean(e?.watched),
+  }));
+}
+function sanitizeGenres(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter(g => typeof g === 'string' && g.trim()).map(g => String(g));
+}
+
+// Load the web font without blocking first paint, and with a strict CSP in place.
+function loadFont() {
+  const l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap';
+  document.head.appendChild(l);
+}
+
+// Event delegation: one listener per container instead of inline handlers (no inline
+// JS => CSP-safe, and listeners survive innerHTML re-renders).
+function setupDelegation() {
+  document.getElementById('dashboard-cards').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (btn.dataset.action === 'search') {
+      const show = state.shows.find(s => s.id === id);
+      if (show) searchShow(show.name);
+    } else if (btn.dataset.action === 'edit') {
+      editShow(id);
+    } else if (btn.dataset.action === 'delete') {
+      deleteShow(id);
+    }
+  });
+
+  const watchlist = document.getElementById('watchlist-items');
+  watchlist.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    if (action === 'search') {
+      const show = state.shows.find(s => s.id === btn.dataset.id);
+      if (show) searchShow(show.name);
+    } else if (action === 'edit-ep') {
+      editEpisode(btn.dataset.id, btn.dataset.epId);
+    } else if (action === 'delete-ep') {
+      deleteEpisode(btn.dataset.epId);
+    } else if (action === 'add-ep') {
+      addEpisode(btn.dataset.id);
+    }
+  });
+  watchlist.addEventListener('change', e => {
+    const cb = e.target.closest('input[data-action="toggle"]');
+    if (cb) toggleEpisode(cb.dataset.epId, cb.checked);
+  });
+
+  document.getElementById('search-presets-list').addEventListener('click', e => {
+    const card = e.target.closest('[data-action="preset"]');
+    if (card) performSearch(card.dataset.keywords);
+  });
 }
 
 /* ===== Service Worker ===== */
@@ -547,5 +661,7 @@ if ('serviceWorker' in navigator) {
 }
 
 /* ===== Init ===== */
+loadFont();
+setupDelegation();
 loadState();
 renderDashboard();
